@@ -1,15 +1,14 @@
 ﻿
 module Utils
-
-let inline private medianGen (x : 'a []) =
-    let sorted = (x |> Array.sort)
-    let xlen, xlenh = x.Length, x.Length / 2
-    xlen % 2 = 0, sorted.[xlenh], sorted.[xlenh - 1]
-
+ 
 let inline medianx two (x : ^a []) =
     if x.Length = 1 then x.[0]
     else
-        let iseven, med, medl = medianGen x
+        let iseven, med, medl = 
+            let sorted = Array.sort x
+            let xlen, xlenh = x.Length, x.Length / 2
+            xlen % 2 = 0, sorted.[xlenh], sorted.[xlenh - 1]
+
         if iseven then (med + medl) /two
         else med
 
