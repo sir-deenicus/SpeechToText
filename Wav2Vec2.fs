@@ -1,16 +1,16 @@
-﻿#r "System.Memory"
-#r "System.Runtime.InteropServices"
-#r @"C:\Users\cybernetic\source\repos\Prelude\Prelude\bin\Release\net47\prelude.dll"
-#r @"D:\Downloads\NeuralNets\onnx\Microsoft.ML.OnnxRuntime.dll"
-#r @"C:\Users\cybernetic\.nuget\packages\naudio\1.7.3\lib\net35\NAudio.dll"
-#r @"C:\Users\cybernetic\.nuget\packages\newtonsoft.json\13.0.1-beta1\lib\netstandard2.0\Newtonsoft.Json.dll"
-open Newtonsoft.Json
-open NAudio
-open Microsoft.ML.OnnxRuntime
-open System
-open Prelude.Common 
-open Prelude.Math 
+﻿module Wav2Vec2
 
+open NAudio
+open NAudio.Wave
+open System
+open Newtonsoft.Json
+open Microsoft.ML.OnnxRuntime
+open Utils
+
+type ModelType =
+    | QuantizedLargeST
+    | LargeST
+     
 ///group indices that are near each other. 0,1,3,5,20 becomes 0,20
 let groupTimeIndices (amplitudes : _ []) =
     let rec buildArray prevSecondsIndex index =
@@ -28,11 +28,8 @@ let calculateSplittingCandidates silenceThreshold volumeMedians =
         |> Array.filter (fun (i, v) -> v <= silenceThreshold && i % 30 <= 6) 
         |> groupTimeIndices 
         |> Array.pairwise
-        |> Array.map (fun ((i, _), (i2, _)) -> i, i2, i2 - i + 1)
-        //|> Array.map (fun ((i, _), (i2, _)) ->  
-        //    let left, right = max 0 (i-1), min (volumeMedians.Length-1) (i2+1) 
-        //    left, right, right - left + 1) //add 1 second to the left, and one to the right as buffer/extra
-    
+        |> Array.map (fun ((i, _), (i2, _)) -> i, i2, i2 - i + 1) 
+
     let startslice, endslice, endlen = splits.[^0] // get last element
     let appendedLen = endlen + (volumeMedians.Length - endslice)
     if appendedLen <= 36 then  //either adjust last element to include rest of sound or append remainder to end
@@ -64,7 +61,7 @@ let splitAudioWith splitRanges (waveSeconds:_[][]) =
 
 
 let splitAudio sampleRate (samples:_[]) = 
-    if samples.Length/sampleRate < 35 then [|samples|] // number of seconds
+    if samples.Length/sampleRate < 35 then [|samples|]
     else  
         let waveSeconds = 
             [|for i in 0..sampleRate..samples.Length - 1 -> 
@@ -74,69 +71,33 @@ let splitAudio sampleRate (samples:_[]) =
             [| for section in waveSeconds ->
                 section
                 |> Array.map (fun v -> 20f * log10 (abs v))
-                |> Stats.medianf32 |]
+                |> medianf32 |]
 
         match findMinThresh -60f volumeMedians with 
         | [||] -> 
             printfn "Could not calculate ideal split. performing even split."
             splitInto30secIntervals sampleRate samples 
         | splits -> 
-            printfn $"Split found: {splits}"
+            printfn "Split found: %A" splits
             splitAudioWith splits waveSeconds 
          
   
 let loadAudio (audioFile:string) =
-    use wave = new Wave.WaveFileReader(audioFile)
+    use wave = new WaveFileReader(audioFile) 
+    let waveBuffer = Array.create (int wave.Length) 0uy  
+    wave.Read (waveBuffer, 0, waveBuffer.Length) |> ignore 
 
-    let waveBuffer = wave.ReadArray (int wave.Length) 
     printfn $"Audio duration: {wave.TotalTime}"
     let samples =
         [| for i in 0 .. 2 .. waveBuffer.Length - 2 ->
             float32 (BitConverter.ToInt16(waveBuffer, i))
             / float32 Int16.MaxValue |]
-
+   
     samples, wave.WaveFormat.SampleRate
-
-
-let audioFile = IO.Path.Combine(@"D:\Downloads\NeuralNets\deepspeech\", "mathdiff.wav")  
-
-let wave = new Wave.WaveFileReader(audioFile)
-
-let waveBuffer = wave.ReadArray (int wave.Length) 
-
-let sampleRate = wave.WaveFormat.SampleRate
-
-let samples =
-    [| for i in 0 .. 2 .. waveBuffer.Length - 2 ->
-        float32 (BitConverter.ToInt16(waveBuffer, i))
-        / float32 Int16.MaxValue |]
-         
-let waveSeconds = 
-    [|for i in 0..sampleRate..samples.Length - 1 -> 
-        samples.[i..i + (sampleRate-1)] |] 
       
-Array.concat waveSeconds = samples 
-      
-let volumeMedians =
-    [| for section in waveSeconds ->
-        section
-        |> Array.map (fun v -> 20f * log10 (abs v))
-        |> Stats.medianf32 |]
-
-let silenceThreshold = -90f
-let splits = calculateSplittingCandidates -30f volumeMedians
-
-
-let standardize (w: float32 []) =
-    let var, mean = Stats.varianceAndMeanf32 w
-    let stdev = sqrt (var + 1e-5f)
-    [| for x in w -> (x - mean) / stdev |]
-
-
-let argmax vector = Array.indexed vector |> Array.maxBy snd |> fst
 
 let vocabJson =
-    JsonConvert.DeserializeObject<Dict<string, int>>
+    JsonConvert.DeserializeObject<Collections.Generic.Dictionary<string, int>>
         (IO.File.ReadAllText
              @"D:\Downloads\NeuralNets\wav2vec2-large-960h\vocab.json")
 
@@ -153,16 +114,16 @@ let decode tensor =
      |> snd 
 
  
-let xlmodel = @"D:\Downloads\NeuralNets\wav2vec2-large-960h-lv60-self\wav2vec2-large-960h-lv60-self-quantized.onnx"
-let basemodel = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h-quantized.onnx"
-let speechToTextModel = new InferenceSession(basemodel)
+let modelLargeST = @"D:\Downloads\NeuralNets\wav2vec2-large-960h-lv60-self\wav2vec2-large-960h-lv60-self.onnx"
+let modelLargeSTq = @"D:\Downloads\NeuralNets\wav2vec2-large-960h-lv60-self\wav2vec2-large-960h-lv60-self-quantized.onnx"
+let basemodelq = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h-quantized.onnx"
 
-speechToTextModel.OutputMetadata
-
-let transcribe data =
+let speechToTextModel = new InferenceSession(modelLargeST)
+ 
+let transcribeAux (session:InferenceSession) data =
     let t = Tensors.ArrayTensorExtensions.ToTensor(array2D [|data|])
 
-    use outputs = speechToTextModel.Run [|NamedOnnxValue.CreateFromTensor("input_values", t)|]
+    use outputs = session.Run [|NamedOnnxValue.CreateFromTensor("input_values", t)|]
     use output = Seq.head outputs
      
     let result = output.AsTensor<float32>()
@@ -171,13 +132,22 @@ let transcribe data =
     decode [| for i in 0..dims.[1] - 1 ->
                 [| for j in 0..dims.[2] - 1 -> result.[0, i, j] |] |]
 
+let transcribe data = transcribeAux speechToTextModel data
 
-let samples, sampleRate = loadAudio audioFile
+let transcribeAudio modelType audioFile =
+    let samples, sampleRate = loadAudio audioFile
+    let splitaudio = splitAudio sampleRate samples
 
-let splitaudio = splitAudio sampleRate samples    
-let tokenized = Array.map standardize splitaudio
+    let tokenized = Array.map standardize splitaudio
 
-splitaudio.Length
-let strs = Array.map transcribe tokenized
+    let transcriber =
+        match modelType with
+        | QuantizedLargeST -> transcribeAux (new InferenceSession(modelLargeSTq))
+        | LargeST -> transcribe
 
-String.concat " " strs
+    let strs = 
+        Array.mapi (fun i w -> 
+            printfn $"Segment {i+1} of {splitaudio.Length}"
+            transcriber w) tokenized
+
+    String.concat " " strs

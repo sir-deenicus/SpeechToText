@@ -1,19 +1,14 @@
-﻿// Learn more about F# at https://fsharp.org
-// See the 'F# Tutorial' project for more help.
-
+﻿
 open DeepSpeechClient
 open NAudio.Wave
 open System.IO
 open System
-open System.Diagnostics
-open Newtonsoft.Json
-open Microsoft.ML.OnnxRuntime
+open System.Diagnostics 
 
 let deepSpeechDir = @"D:\Downloads\NeuralNets\deepspeech"
 
-let sw = Stopwatch()
-  
-
+let sw = Stopwatch() 
+     
 let transcribeWithDeepSpeech verstr (audioFile:string) =
     use ds = new DeepSpeech(sprintf @"%s\deepspeech-%s-models.pbmm" deepSpeechDir verstr)
     ds.EnableExternalScorer(sprintf @"%s\deepspeech-%s-models.scorer" deepSpeechDir verstr)
@@ -40,12 +35,14 @@ let main argv =
     
         sw.Start() 
 
-        printfn "Please select a version\n[1]: 0.8.2 | [2]: 0.9"
+        printfn "Please select a version\n[1]: DeepSpeech 0.8.2 | [2]: DeepSpeech 0.9 | [3]: wav2vec2 | [4]: wav2vec2 quantized"
 
         let verstr =
             match Console.ReadLine() with
             | "1" -> "0.8.2"
             | "2" -> "0.9.0"
+            | "3" -> "wav2vec"
+            | "4" -> "wav2vec quantized"
             | _ -> ""
 
         if verstr = "" then 0
@@ -57,12 +54,18 @@ let main argv =
                     Path.Combine(deepSpeechDir, audioFileArg)
                 else audioFileArg
              
-            let txt = transcribeWithDeepSpeech verstr audioFile 
+            let txt =
+                match verstr with
+                | "wav2vec" -> Wav2Vec2.transcribeAudio Wav2Vec2.ModelType.LargeST audioFile
+                | "wav2vec quantized" -> 
+                    Wav2Vec2.transcribeAudio Wav2Vec2.ModelType.QuantizedLargeST audioFile
+                | _ -> transcribeWithDeepSpeech verstr audioFile 
+
             printfn "Time Taken: %A\n" sw.Elapsed
 
             let fn = Path.GetFileNameWithoutExtension audioFile
 
             IO.File.WriteAllText (IO.Path.Combine(deepSpeechDir, $"{fn}.{verstr}.txt"), txt)
 
-            0 // return an integer exit code
+            0 
 
