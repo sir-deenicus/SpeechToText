@@ -35,14 +35,16 @@ let main argv =
     
         sw.Start() 
 
-        printfn "Please select a version\n[1]: DeepSpeech 0.8.2 | [2]: DeepSpeech 0.9 | [3]: wav2vec2 | [4]: wav2vec2 quantized"
+        printfn "Please select a version\n[1]: DeepSpeech 0.8.2 | [2]: DeepSpeech 0.9 | [3]: wav2vec2 best | [4]: wav2vec2 large | [5]: wav2vec2 base | [6]: wav2vec2 base quantized"
 
         let verstr =
             match Console.ReadLine() with
             | "1" -> "0.8.2"
             | "2" -> "0.9.0"
             | "3" -> "wav2vec"
-            | "4" -> "wav2vec quantized"
+            | "4" -> "wav2vec-large"
+            | "5" -> "wav2vec-base"
+            | "6" -> "wav2vec-base-quantized"
             | _ -> ""
 
         if verstr = "" then 0
@@ -57,8 +59,12 @@ let main argv =
             let txt =
                 match verstr with
                 | "wav2vec" -> Wav2Vec2.transcribeAudio Wav2Vec2.ModelType.LargeST audioFile
-                | "wav2vec quantized" -> 
-                    Wav2Vec2.transcribeAudio Wav2Vec2.ModelType.QuantizedLargeST audioFile
+                | "wav2vec-large" -> 
+                    Wav2Vec2.transcribeAudio Wav2Vec2.ModelType.Large audioFile
+                | "wav2vec-base" -> 
+                    Wav2Vec2.transcribeAudio Wav2Vec2.ModelType.Base audioFile
+                | "wav2vec-base-quantized" -> 
+                    Wav2Vec2.transcribeAudio Wav2Vec2.ModelType.BaseQuantized audioFile
                 | _ -> transcribeWithDeepSpeech verstr audioFile 
 
             printfn "Time Taken: %A\n" sw.Elapsed

@@ -8,7 +8,9 @@ open Microsoft.ML.OnnxRuntime
 open Utils
 
 type ModelType =
-    | QuantizedLargeST
+    | Large 
+    | Base
+    | BaseQuantized
     | LargeST
      
 ///group indices that are near each other. 0,1,3,5,20 becomes 0,20
@@ -115,8 +117,9 @@ let decode tensor =
 
  
 let modelLargeST = @"D:\Downloads\NeuralNets\wav2vec2-large-960h-lv60-self\wav2vec2-large-960h-lv60-self.onnx"
-let modelLargeSTq = @"D:\Downloads\NeuralNets\wav2vec2-large-960h-lv60-self\wav2vec2-large-960h-lv60-self-quantized.onnx"
+let modelLarge = @"D:\Downloads\NeuralNets\wav2vec2-large-960h\wav2vec2-large-960h.onnx"
 let basemodelq = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h-quantized.onnx"
+let basemodel = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h.onnx"
 
 let speechToTextModel = new InferenceSession(modelLargeST)
  
@@ -142,7 +145,9 @@ let transcribeAudio modelType audioFile =
 
     let transcriber =
         match modelType with
-        | QuantizedLargeST -> transcribeAux (new InferenceSession(modelLargeSTq))
+        | Base -> transcribeAux (new InferenceSession(basemodel))
+        | BaseQuantized -> transcribeAux (new InferenceSession(basemodelq))
+        | Large -> transcribeAux (new InferenceSession(modelLarge))
         | LargeST -> transcribe
 
     let strs = 
