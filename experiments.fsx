@@ -32,25 +32,27 @@ let calculateSplittingCandidates silenceThreshold volumeMedians =
         //|> Array.map (fun ((i, _), (i2, _)) ->  
         //    let left, right = max 0 (i-1), min (volumeMedians.Length-1) (i2+1) 
         //    left, right, right - left + 1) //add 1 second to the left, and one to the right as buffer/extra
-    
-    let startslice, endslice, endlen = splits.[^0] // get last element
-    let appendedLen = endlen + (volumeMedians.Length - endslice)
-    if appendedLen <= 36 then  //either adjust last element to include rest of sound or append remainder to end
-       printfn "Adjusting last slice to contain remainder segment"
-       splits.[^0] <- startslice, volumeMedians.Length - 1, appendedLen 
-       splits
+    if Array.isEmpty splits then [||]
     else 
-        printfn "Appending remainder segment"
-        Array.append splits
-            [| endslice, volumeMedians.Length - 1,
-               volumeMedians.Length - endslice |]
+        let startslice, endslice, endlen = splits.[^0] // get last element
+        let appendedLen = endlen + (volumeMedians.Length - endslice)
+        if appendedLen <= 36 then  //either adjust last element to include rest of sound or append remainder to end
+           printfn "Adjusting last slice to contain remainder segment"
+           splits.[^0] <- startslice, volumeMedians.Length - 1, appendedLen 
+           splits
+        else 
+            printfn "Appending remainder segment"
+            Array.append splits
+                [| endslice, volumeMedians.Length - 1,
+                   volumeMedians.Length - endslice |]
       
 let rec findMinThresh minthresh volumeMedians = 
     printfn $"Threshold = {minthresh}"
     if minthresh > -25f then [||]
     else 
         let splitPoints = calculateSplittingCandidates minthresh volumeMedians
-        if Array.exists (fun (_,_,r) -> r > 36) splitPoints then
+        if Array.isEmpty splitPoints 
+            || Array.exists (fun (_,_,r) -> r > 36) splitPoints then
             printfn "segment > 36 seconds found. Lowering threshold"
             findMinThresh (minthresh + 5f) volumeMedians
         else splitPoints 
@@ -81,7 +83,7 @@ let splitAudio sampleRate (samples:_[]) =
             printfn "Could not calculate ideal split. performing even split."
             splitInto30secIntervals sampleRate samples 
         | splits -> 
-            printfn $"Split found: {splits}"
+            printfn "Split found: %A" splits
             splitAudioWith splits waveSeconds 
          
   
@@ -123,8 +125,8 @@ let volumeMedians =
         |> Array.map (fun v -> 20f * log10 (abs v))
         |> Stats.medianf32 |]
 
-let silenceThreshold = -90f
-let splits = calculateSplittingCandidates -30f volumeMedians
+let silenceThreshold = -60f
+let splits = calculateSplittingCandidates -60f volumeMedians
 
 
 let standardize (w: float32 []) =
@@ -153,16 +155,20 @@ let decode tensor =
      |> snd 
 
  
-let xlmodel = @"D:\Downloads\NeuralNets\wav2vec2-large-960h-lv60-self\wav2vec2-large-960h-lv60-self-quantized.onnx"
-let basemodel = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h-quantized.onnx"
-let speechToTextModel = new InferenceSession(basemodel)
+let modelLargeST = @"D:\Downloads\NeuralNets\wav2vec2-large-960h-lv60-self\wav2vec2-large-960h-lv60-self.onnx"
+let modelLarge = @"D:\Downloads\NeuralNets\wav2vec2-large-960h\wav2vec2-large-960h.onnx"
+let basemodelq = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h-quantized.onnx"
+let basemodel = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h.onnx"
+
+let speechToTextModel = new InferenceSession(modelLargeST)
+let speechToTextModelBase = new InferenceSession(basemodel)
 
 speechToTextModel.OutputMetadata
 
-let transcribe data =
+let transcribe (session:InferenceSession) data =
     let t = Tensors.ArrayTensorExtensions.ToTensor(array2D [|data|])
 
-    use outputs = speechToTextModel.Run [|NamedOnnxValue.CreateFromTensor("input_values", t)|]
+    use outputs = session.Run [|NamedOnnxValue.CreateFromTensor("input_values", t)|]
     use output = Seq.head outputs
      
     let result = output.AsTensor<float32>()
@@ -178,6 +184,7 @@ let splitaudio = splitAudio sampleRate samples
 let tokenized = Array.map standardize splitaudio
 
 splitaudio.Length
-let strs = Array.map transcribe tokenized
+
+let strs = Array.map (transcribe speechToTextModel) tokenized
 
 String.concat " " strs

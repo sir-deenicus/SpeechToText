@@ -32,24 +32,27 @@ let calculateSplittingCandidates silenceThreshold volumeMedians =
         |> Array.pairwise
         |> Array.map (fun ((i, _), (i2, _)) -> i, i2, i2 - i + 1) 
 
-    let startslice, endslice, endlen = splits.[^0] // get last element
-    let appendedLen = endlen + (volumeMedians.Length - endslice)
-    if appendedLen <= 36 then  //either adjust last element to include rest of sound or append remainder to end
-       printfn "Adjusting last slice to contain remainder segment"
-       splits.[^0] <- startslice, volumeMedians.Length - 1, appendedLen 
-       splits
+    if Array.isEmpty splits then [||]
     else 
-        printfn "Appending remainder segment"
-        Array.append splits
-            [| endslice, volumeMedians.Length - 1,
-               volumeMedians.Length - endslice |]
+        let startslice, endslice, endlen = splits.[^0] // get last element
+        let appendedLen = endlen + (volumeMedians.Length - endslice)
+        if appendedLen <= 36 then  //either adjust last element to include rest of sound or append remainder to end
+           printfn "Adjusting last slice to contain remainder segment"
+           splits.[^0] <- startslice, volumeMedians.Length - 1, appendedLen 
+           splits
+        else 
+            printfn "Appending remainder segment"
+            Array.append splits
+                [| endslice, volumeMedians.Length - 1,
+                   volumeMedians.Length - endslice |]
       
 let rec findMinThresh minthresh volumeMedians = 
     printfn $"Threshold = {minthresh}"
     if minthresh > -25f then [||]
     else 
         let splitPoints = calculateSplittingCandidates minthresh volumeMedians
-        if Array.exists (fun (_,_,r) -> r > 36) splitPoints then
+        if Array.isEmpty splitPoints 
+            || Array.exists (fun (_,_,r) -> r > 36) splitPoints then
             printfn "segment > 36 seconds found. Lowering threshold"
             findMinThresh (minthresh + 5f) volumeMedians
         else splitPoints 
@@ -121,9 +124,8 @@ let modelLarge = @"D:\Downloads\NeuralNets\wav2vec2-large-960h\wav2vec2-large-96
 let basemodelq = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h-quantized.onnx"
 let basemodel = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h.onnx"
 
-let speechToTextModel = new InferenceSession(modelLargeST)
- 
-let transcribeAux (session:InferenceSession) data =
+let transcribe (session:InferenceSession) len i data = 
+    printfn $"Segment {i+1} of {len}"
     let t = Tensors.ArrayTensorExtensions.ToTensor(array2D [|data|])
 
     use outputs = session.Run [|NamedOnnxValue.CreateFromTensor("input_values", t)|]
@@ -135,7 +137,6 @@ let transcribeAux (session:InferenceSession) data =
     decode [| for i in 0..dims.[1] - 1 ->
                 [| for j in 0..dims.[2] - 1 -> result.[0, i, j] |] |]
 
-let transcribe data = transcribeAux speechToTextModel data
 
 let transcribeAudio modelType audioFile =
     let samples, sampleRate = loadAudio audioFile
@@ -145,14 +146,15 @@ let transcribeAudio modelType audioFile =
 
     let transcriber =
         match modelType with
-        | Base -> transcribeAux (new InferenceSession(basemodel))
-        | BaseQuantized -> transcribeAux (new InferenceSession(basemodelq))
-        | Large -> transcribeAux (new InferenceSession(modelLarge))
-        | LargeST -> transcribe
+        | BaseQuantized -> 
+            transcribe (new InferenceSession(basemodelq)) splitaudio.Length
+        | Base -> 
+            transcribe (new InferenceSession(basemodel)) splitaudio.Length 
+        | Large -> 
+            transcribe (new InferenceSession(modelLarge)) splitaudio.Length
+        | LargeST ->   
+            transcribe (new InferenceSession(modelLargeST)) splitaudio.Length
 
-    let strs = 
-        Array.mapi (fun i w -> 
-            printfn $"Segment {i+1} of {splitaudio.Length}"
-            transcriber w) tokenized
+    let strs = Array.mapi transcriber tokenized
 
     String.concat " " strs
