@@ -1,9 +1,12 @@
-﻿#r "System.Memory"
+﻿//#r "System.Memory"
+#I @"C:\Users\cybernetic\.nuget\packages"
+#r @"system.memory\4.5.4\lib\netstandard2.0\System.Memory.dll"
 #r "System.Runtime.InteropServices"
 #r @"C:\Users\cybernetic\source\repos\Prelude\Prelude\bin\Release\net47\prelude.dll"
 #r @"D:\Downloads\NeuralNets\onnx\Microsoft.ML.OnnxRuntime.dll"
-#r @"C:\Users\cybernetic\.nuget\packages\naudio\1.7.3\lib\net35\NAudio.dll"
-#r @"C:\Users\cybernetic\.nuget\packages\newtonsoft.json\13.0.1-beta1\lib\netstandard2.0\Newtonsoft.Json.dll"
+#r @"naudio\1.7.3\lib\net35\NAudio.dll"
+#r @"newtonsoft.json\13.0.1-beta1\lib\netstandard2.0\Newtonsoft.Json.dll"
+
 open Newtonsoft.Json
 open NAudio
 open Microsoft.ML.OnnxRuntime
@@ -99,6 +102,7 @@ let loadAudio (audioFile:string) =
 
     samples, wave.WaveFormat.SampleRate
 
+//////////////////////////
 
 let audioFile = IO.Path.Combine(@"D:\Downloads\NeuralNets\deepspeech\", "mathdiff.wav")  
 
@@ -128,12 +132,11 @@ let volumeMedians =
 let silenceThreshold = -60f
 let splits = calculateSplittingCandidates -60f volumeMedians
 
-
+//////////////////////////////
 let standardize (w: float32 []) =
     let var, mean = Stats.varianceAndMeanf32 w
     let stdev = sqrt (var + 1e-5f)
     [| for x in w -> (x - mean) / stdev |]
-
 
 let argmax vector = Array.indexed vector |> Array.maxBy snd |> fst
 
@@ -153,15 +156,14 @@ let decode tensor =
         | "|" -> s, str + " "
         | _ -> s, str + s)  ("","")
      |> snd 
-
- 
+      
 let modelLargeST = @"D:\Downloads\NeuralNets\wav2vec2-large-960h-lv60-self\wav2vec2-large-960h-lv60-self.onnx"
 let modelLarge = @"D:\Downloads\NeuralNets\wav2vec2-large-960h\wav2vec2-large-960h.onnx"
 let basemodelq = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h-quantized.onnx"
 let basemodel = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h.onnx"
 
 let speechToTextModel = new InferenceSession(modelLargeST)
-let speechToTextModelBase = new InferenceSession(basemodel)
+//let speechToTextModelBase = new InferenceSession(basemodel)
 
 speechToTextModel.OutputMetadata
 
@@ -176,7 +178,7 @@ let transcribe (session:InferenceSession) data =
      
     decode [| for i in 0..dims.[1] - 1 ->
                 [| for j in 0..dims.[2] - 1 -> result.[0, i, j] |] |]
-
+////////////////////////////
 
 let samples, sampleRate = loadAudio audioFile
 
@@ -188,3 +190,181 @@ splitaudio.Length
 let strs = Array.map (transcribe speechToTextModel) tokenized
 
 String.concat " " strs
+
+/////////////////////////////////
+
+let audioToText (waveBuffer:_[]) =
+    let samples =
+        [| for i in 0 .. 2 .. waveBuffer.Length - 2 ->
+            float32 (BitConverter.ToInt16(waveBuffer, i))
+            / float32 Int16.MaxValue |]
+     
+    let splitaudio = splitAudio 16_000 samples    
+    let tokenized = Array.map standardize splitaudio
+    
+    let strs = Array.map (transcribe speechToTextModel) tokenized
+    
+    String.concat " " strs
+
+
+#r @"C:\\Users\cybernetic\.nuget\packages\fsharp.control.asyncseq\3.0.3\lib\netstandard2.1\FSharp.Control.AsyncSeq.dll"
+
+open FSharp.Control
+
+open NAudio.Wave
+type CurrentText = { ShortSpan : string; LongSpan : string; FullSpan : string }
+
+//type Msg = 
+//    | Bytes of byte [] 
+//    | Stop 
+//    | StopRec
+//    | RestartRec
+//    | Content of AsyncReplyChannel<CurrentText>
+
+//let proc (msgbox:MailboxProcessor<_>) = 
+//    let shortmem = ResizeArray()
+//    let longmem = ResizeArray()
+//    let fullmem = ResizeArray()
+
+//    let clearMem() =
+//        shortmem.Clear()
+//        longmem.Clear()
+//        fullmem.Clear()
+
+//                   // t = maxlen in seconds
+//    let processByteArray (b : ResizeArray<_>) t data currtext =
+//        b.AddRange data  
+//        if b.Count > 16000 * 2 * t then 
+//            let txt = audioToText (b.ToArray())
+//            printfn "%s" (currtext + txt)
+//            b.Clear()
+//            currtext + txt
+//        else ""
+
+//    let processBytes b curr = 
+//        fullmem.AddRange b
+//        //curr
+//        { curr with 
+//            ShortSpan = processByteArray shortmem 2 b curr.ShortSpan ;
+//            LongSpan = processByteArray longmem 10 b curr.LongSpan;} 
+
+
+//    let rec main curr = async {
+//        match! msgbox.Receive() with    
+//        | Bytes b -> return! main (processBytes b curr)
+//        | Stop -> 
+//            clearMem() 
+//            return ()
+//        | StopRec ->  return! main {curr with FullSpan = audioToText (fullmem.ToArray())}
+//        | RestartRec ->
+//            clearMem() 
+//            return! main {ShortSpan = ""; LongSpan = ""; FullSpan = ""}
+//        | Content r -> 
+//            r.Reply (curr)
+//            return! main curr
+//    }
+
+//    main {ShortSpan = ""; LongSpan = ""; FullSpan = ""}
+
+//let sys = MailboxProcessor.Start proc 
+
+//let res = sys.PostAndReply Content 
+
+//let waveSource = new WaveIn(WaveFormat = new WaveFormat(16000, 1)) 
+ 
+//let memstream = new IO.MemoryStream()
+
+//let waveFile = new WaveFileWriter(memstream, waveSource.WaveFormat)
+ 
+//waveSource.DataAvailable.Add (fun ev -> sys.Post(Bytes ev.Buffer))
+
+//waveSource.RecordingStopped.Add(fun _ -> 
+//    sys.Post(Stop)
+//    waveSource.Dispose()
+//    closeAndDispose waveFile
+//    closeAndDispose memstream) 
+
+//waveSource.StartRecording()
+
+//sys.Post(StopRec)
+
+//sys.Post(RestartRec)
+
+//waveSource.StopRecording()
+   
+//res
+
+//////////////////
+open NAudio.Wave
+
+let liveTranscribe (memstream:IO.MemoryStream) = 
+    memstream.Reset() |> ignore
+    let wave = new Wave.WaveFileReader(memstream)
+
+    let waveBuffer = wave.ReadArray (int wave.Length) 
+
+    let samples =
+        [| for i in 0 .. 2 .. waveBuffer.Length - 2 ->
+            float32 (BitConverter.ToInt16(waveBuffer, i))
+            / float32 Int16.MaxValue |]
+
+    printfn $"Sample Rate: {wave.WaveFormat.SampleRate}"
+    printfn $"Total Time: {wave.TotalTime}"
+ 
+    let splitaudio = splitAudio wave.WaveFormat.SampleRate samples    
+    let tokenized = Array.map standardize splitaudio
+
+    printfn $"Audio Len: {splitaudio.Length}"
+
+    let strs = Array.map (transcribe speechToTextModel) tokenized
+
+    String.concat " " strs
+
+
+let newrecord () =
+    let waveSource = new WaveIn(WaveFormat = new WaveFormat(16000, 1)) 
+
+    let memstream = new IO.MemoryStream()
+    let waveFile = new WaveFileWriter(memstream, waveSource.WaveFormat)
+
+    let disposeAll () = 
+        printfn "Disposing..."
+        waveSource.Dispose()
+        closeAndDispose waveFile
+        closeAndDispose memstream
+        printfn "Done"
+
+    
+    let run() =
+        waveSource.StopRecording()
+    
+        let rstr = liveTranscribe memstream
+        disposeAll()
+        rstr 
+    
+    waveSource.DataAvailable.Add
+        (fun waveEv ->  
+            waveFile.Write(waveEv.Buffer, 0, waveEv.BytesRecorded)
+            waveFile.Flush())
+
+    waveSource, run
+ 
+let waveSource, run = newrecord()
+
+waveSource.StartRecording()
+
+let rstr = run()
+
+rstr
+
+Diagnostics.Process.Start("https://www.google.com?q=" + Net.WebUtility.UrlEncode(rstr))
+ 
+#r "System.Speech"
+
+let synth = new System.Speech.Synthesis.SpeechSynthesizer()
+
+synth.Rate <- 6
+
+synth.Speak(rstr)
+
+synth.Speak ("bayesian inference")
