@@ -11,7 +11,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.10.0" />
     <PackageReference Include="NAudio" Version="2.0.0" />
+    <PackageReference Include="Prelude" Version="1.7.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Wav2Vec2\Wav2Vec2.fsproj" />
   </ItemGroup>
 
 </Project>

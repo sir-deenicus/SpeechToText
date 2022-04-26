@@ -27,7 +27,7 @@ let calculateSplittingCandidates silenceThreshold volumeMedians =
     let splits =
         Array.indexed volumeMedians //index s.t. each index stands for position in seconds
         //filter all but sections whose median amplitude < threshold and are near the border of 30 second increments
-        |> Array.filter (fun (i, v) -> v <= silenceThreshold && i % 30 <= 6) 
+        |> Array.filter (fun (i, v) -> i = 0 || v <= silenceThreshold && i % 30 <= 6) 
         |> groupTimeIndices 
         |> Array.pairwise
         |> Array.map (fun ((i, _), (i2, _)) -> i, i2, i2 - i + 1) 
@@ -118,7 +118,7 @@ let decode tensor =
         | _ -> s, str + s)  ("","")
      |> snd 
 
- 
+let modelLargeRobust = @"D:\Downloads\NeuralNets\wav2vec2-large-robust-ft-libri-960h\wav2vec2-large-robust-ft-libri-960h.onnx"
 let modelLargeST = @"D:\Downloads\NeuralNets\wav2vec2-large-960h-lv60-self\wav2vec2-large-960h-lv60-self.onnx"
 let modelLarge = @"D:\Downloads\NeuralNets\wav2vec2-large-960h\wav2vec2-large-960h.onnx"
 let basemodelq = @"D:\Downloads\NeuralNets\wav2vec2-base-960h\wav2vec2-base-960h-quantized.onnx"

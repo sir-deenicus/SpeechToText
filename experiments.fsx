@@ -1,9 +1,9 @@
-﻿//#r "System.Memory"
+﻿
 #I @"C:\Users\cybernetic\.nuget\packages"
 #r @"system.memory\4.5.4\lib\netstandard2.0\System.Memory.dll"
 #r "System.Runtime.InteropServices"
 #r @"C:\Users\cybernetic\source\repos\Prelude\Prelude\bin\Release\net47\prelude.dll"
-#r @"D:\Downloads\NeuralNets\onnx\Microsoft.ML.OnnxRuntime.dll"
+#r @"D:\Downloads\NeuralNets\onnx1.8\Microsoft.ML.OnnxRuntime.dll"
 #r @"naudio\1.7.3\lib\net35\NAudio.dll"
 #r @"newtonsoft.json\13.0.1-beta1\lib\netstandard2.0\Newtonsoft.Json.dll"
 
@@ -22,13 +22,13 @@ let groupTimeIndices (amplitudes : _ []) =
                yield p
            if index + 1 < amplitudes.Length then
                yield! buildArray secondsIndex (index + 1) |]
-    if amplitudes.Length = 0 then [||] else buildArray -1 0
+    if amplitudes.Length = 0 then [||] else buildArray -1 0 
 
 let calculateSplittingCandidates silenceThreshold volumeMedians =
     let splits =
         Array.indexed volumeMedians //index s.t. each index stands for position in seconds
         //filter all but sections whose median amplitude < threshold and are near the border of 30 second increments
-        |> Array.filter (fun (i, v) -> v <= silenceThreshold && i % 30 <= 6) 
+        |> Array.filter (fun (i, v) -> i = 0 || v <= silenceThreshold && i % 30 <= 6) 
         |> groupTimeIndices 
         |> Array.pairwise
         |> Array.map (fun ((i, _), (i2, _)) -> i, i2, i2 - i + 1)
@@ -104,8 +104,8 @@ let loadAudio (audioFile:string) =
 
 //////////////////////////
 
-let audioFile = IO.Path.Combine(@"D:\Downloads\NeuralNets\deepspeech\", "mathdiff.wav")  
-
+let audioFile = IO.Path.Combine(@"D:\Downloads\NeuralNets\deepspeech\", "lagrangebp.wav")  
+ 
 let wave = new Wave.WaveFileReader(audioFile)
 
 let waveBuffer = wave.ReadArray (int wave.Length) 
@@ -131,6 +131,8 @@ let volumeMedians =
 
 let silenceThreshold = -60f
 let splits = calculateSplittingCandidates -60f volumeMedians
+
+closeAndDispose wave
 
 //////////////////////////////
 let standardize (w: float32 []) =
@@ -206,94 +208,6 @@ let audioToText (waveBuffer:_[]) =
     
     String.concat " " strs
 
-
-#r @"C:\\Users\cybernetic\.nuget\packages\fsharp.control.asyncseq\3.0.3\lib\netstandard2.1\FSharp.Control.AsyncSeq.dll"
-
-open FSharp.Control
-
-open NAudio.Wave
-type CurrentText = { ShortSpan : string; LongSpan : string; FullSpan : string }
-
-//type Msg = 
-//    | Bytes of byte [] 
-//    | Stop 
-//    | StopRec
-//    | RestartRec
-//    | Content of AsyncReplyChannel<CurrentText>
-
-//let proc (msgbox:MailboxProcessor<_>) = 
-//    let shortmem = ResizeArray()
-//    let longmem = ResizeArray()
-//    let fullmem = ResizeArray()
-
-//    let clearMem() =
-//        shortmem.Clear()
-//        longmem.Clear()
-//        fullmem.Clear()
-
-//                   // t = maxlen in seconds
-//    let processByteArray (b : ResizeArray<_>) t data currtext =
-//        b.AddRange data  
-//        if b.Count > 16000 * 2 * t then 
-//            let txt = audioToText (b.ToArray())
-//            printfn "%s" (currtext + txt)
-//            b.Clear()
-//            currtext + txt
-//        else ""
-
-//    let processBytes b curr = 
-//        fullmem.AddRange b
-//        //curr
-//        { curr with 
-//            ShortSpan = processByteArray shortmem 2 b curr.ShortSpan ;
-//            LongSpan = processByteArray longmem 10 b curr.LongSpan;} 
-
-
-//    let rec main curr = async {
-//        match! msgbox.Receive() with    
-//        | Bytes b -> return! main (processBytes b curr)
-//        | Stop -> 
-//            clearMem() 
-//            return ()
-//        | StopRec ->  return! main {curr with FullSpan = audioToText (fullmem.ToArray())}
-//        | RestartRec ->
-//            clearMem() 
-//            return! main {ShortSpan = ""; LongSpan = ""; FullSpan = ""}
-//        | Content r -> 
-//            r.Reply (curr)
-//            return! main curr
-//    }
-
-//    main {ShortSpan = ""; LongSpan = ""; FullSpan = ""}
-
-//let sys = MailboxProcessor.Start proc 
-
-//let res = sys.PostAndReply Content 
-
-//let waveSource = new WaveIn(WaveFormat = new WaveFormat(16000, 1)) 
- 
-//let memstream = new IO.MemoryStream()
-
-//let waveFile = new WaveFileWriter(memstream, waveSource.WaveFormat)
- 
-//waveSource.DataAvailable.Add (fun ev -> sys.Post(Bytes ev.Buffer))
-
-//waveSource.RecordingStopped.Add(fun _ -> 
-//    sys.Post(Stop)
-//    waveSource.Dispose()
-//    closeAndDispose waveFile
-//    closeAndDispose memstream) 
-
-//waveSource.StartRecording()
-
-//sys.Post(StopRec)
-
-//sys.Post(RestartRec)
-
-//waveSource.StopRecording()
-   
-//res
-
 //////////////////
 open NAudio.Wave
 
@@ -348,23 +262,9 @@ let newrecord () =
             waveFile.Flush())
 
     waveSource, run
- 
+
 let waveSource, run = newrecord()
-
 waveSource.StartRecording()
-
 let rstr = run()
+rstr 
 
-rstr
-
-Diagnostics.Process.Start("https://www.google.com?q=" + Net.WebUtility.UrlEncode(rstr))
- 
-#r "System.Speech"
-
-let synth = new System.Speech.Synthesis.SpeechSynthesizer()
-
-synth.Rate <- 6
-
-synth.Speak(rstr)
-
-synth.Speak ("bayesian inference")

@@ -27,7 +27,7 @@ let calculateSplittingCandidates silenceThreshold volumeMedians =
     let splits =
         Array.indexed volumeMedians //index s.t. each index stands for position in seconds
         //filter all but sections whose median amplitude < threshold and are near the border of 30 second increments
-        |> Array.filter (fun (i, v) -> v <= silenceThreshold && i % 30 <= 6) 
+        |> Array.filter (fun (i, v) -> i = 0 || v <= silenceThreshold && i % 30 <= 6) 
         |> groupTimeIndices 
         |> Array.pairwise
         |> Array.map (fun ((i, _), (i2, _)) -> i, i2, i2 - i + 1) 
